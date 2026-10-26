@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<title>Kerala Road Trip</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+/* Layout: full-screen map; floating top bar; draggable bottom sheet on phones, left panel on desktop */
+:root{
+  --bg:#eef2ee; --panel:#ffffff; --raise:#f1f4f1; --ink:#111a16; --muted:#5d6b64; --line:#dfe6e1;
+  --lagoon:#0d6e5d; --lagoon-soft:#dff0ea; --spice:#d4572a; --spice-soft:#fbe8df; --gps:#2f6fdf; --extra:#7b5cc4;
+  --shadow:0 6px 24px rgba(10,30,20,.14);
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --body:"Figtree",ui-sans-serif,system-ui,sans-serif;
+  --sheetH:220px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#000; --panel:#000; --raise:#141414; --ink:#f4f4f4; --muted:#a1a1a1; --line:#262626;
+  --lagoon:#3fd0b0; --lagoon-soft:#0a2a23; --spice:#ff8a5c; --spice-soft:#2a1309; --gps:#5b9bff; --extra:#b39cff;
+  --shadow:0 6px 24px rgba(0,0,0,.6); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#000; --panel:#000; --raise:#141414; --ink:#f4f4f4; --muted:#a1a1a1; --line:#262626;
+  --lagoon:#3fd0b0; --lagoon-soft:#0a2a23; --spice:#ff8a5c; --spice-soft:#2a1309; --gps:#5b9bff; --extra:#b39cff;
+  --shadow:0 6px 24px rgba(0,0,0,.6); color-scheme:dark}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--body);overflow:hidden;overscroll-behavior:none}
+button{font:inherit;color:inherit}
+#map{position:fixed;inset:0;background:var(--bg)}
+
+/* top bar */
+.topbar{position:fixed;z-index:1000;top:calc(10px + env(safe-area-inset-top,0px));left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));
+  display:flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow)}
+.brand{flex:1;min-width:0}
+.brand h1{font:700 17px/1.1 var(--display);margin:0;letter-spacing:-.01em;white-space:nowrap}
+.brand .sub{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prog{font:700 12px var(--body);color:var(--lagoon);background:var(--lagoon-soft);padding:6px 10px;border-radius:999px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.iconbtn{width:38px;height:38px;flex:none;border-radius:12px;border:1px solid var(--line);background:var(--raise);display:grid;place-items:center;cursor:pointer}
+.iconbtn svg{width:18px;height:18px}
+
+/* bottom sheet (phone) */
+.sheet{position:fixed;z-index:1001;left:0;right:0;bottom:0;height:var(--sheetH);background:var(--panel);border-top:1px solid var(--line);
+  border-radius:20px 20px 0 0;box-shadow:var(--shadow);display:flex;flex-direction:column;transition:height .28s cubic-bezier(.2,.8,.2,1)}
+.sheet.dragging{transition:none}
+.grab{padding:8px 0 2px;cursor:grab;touch-action:none;display:grid;place-items:center}
+.grab span{width:42px;height:5px;border-radius:9px;background:var(--line)}
+.inner{padding:4px max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px));display:grid;gap:10px}
+.gpsrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gpsrow.has-restart{grid-template-columns:1fr 1fr 48px}
+.gpsrow .btn{padding:12px 8px;font-size:14px}
+[hidden]{display:none!important}
+#restartBtn{padding:10px 0}
+.btn{border:1px solid var(--line);background:var(--raise);padding:10px 8px;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;color:var(--ink);white-space:nowrap}
+.btn svg{width:16px;height:16px;flex:none}
+.btn.primary{background:var(--lagoon);border-color:var(--lagoon);color:#fff}
+:root[data-theme="dark"] .btn.primary{color:#000}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn.primary{color:#000}}
+.btn.on{border-color:var(--lagoon);color:var(--lagoon);background:var(--lagoon-soft)}
+.btn:focus-visible,.iconbtn:focus-visible,.chip:focus-visible,.stop:focus-visible{outline:2px solid var(--lagoon);outline-offset:2px}
+.status{font-size:12.5px;color:var(--muted);margin-top:-2px}
+.nextcard{display:none;grid-template-columns:auto 1fr;gap:10px;align-items:center;background:var(--spice-soft);border-radius:14px;padding:10px 12px}
+.nextcard.show{display:grid}
+.nextcard .dot{width:34px;height:34px;border-radius:10px;background:var(--spice);color:#fff;display:grid;place-items:center;font:700 13px var(--body)}
+.nextcard .lbl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--spice);font-weight:700}
+.nextcard .nm{font:700 15px/1.2 var(--display)}
+.nextcard .meta{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.days{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 calc(-1*max(16px,env(safe-area-inset-left,0px)));padding:0 max(16px,env(safe-area-inset-left,0px)) 10px;border-bottom:1px solid var(--line)}
+.days::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--raise);padding:7px 13px;border-radius:999px;font-size:13px;font-weight:700;cursor:pointer}
+.chip.active{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.scroll{flex:1;overflow-y:auto;overscroll-behavior:contain;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
+.dayhead{padding:14px max(16px,env(safe-area-inset-right,0px)) 6px max(16px,env(safe-area-inset-left,0px));display:grid;gap:4px}
+.dayhead h2{font:700 18px/1.2 var(--display);margin:0;text-wrap:balance}
+.dayhead .meta{font-size:13px;color:var(--muted)}
+.dayhead .btn{justify-self:start;margin-top:6px;padding:9px 14px}
+.datebox{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted);margin-top:6px}
+input[type=date]{font:600 13px var(--body);padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:var(--raise);color:var(--ink)}
+.stop{display:grid;grid-template-columns:58px 1fr;gap:10px;padding:11px max(16px,env(safe-area-inset-right,0px)) 11px max(16px,env(safe-area-inset-left,0px));cursor:pointer;border-left:3px solid transparent}
+.stop:active{background:var(--raise)}
+.stop.next{border-left-color:var(--spice);background:var(--spice-soft)}
+.stop.done .nm{color:var(--muted);text-decoration:line-through}
+.stop .t{font:700 12px var(--body);color:var(--muted);padding-top:2px;font-variant-numeric:tabular-nums}
+.stop .nm{font-weight:700}
+.stop .note{font-size:13px;color:var(--muted);min-width:0}
+.tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:6px;margin-left:6px;vertical-align:2px;background:var(--raise);color:var(--muted);border:1px solid var(--line)}
+.tag.x{color:var(--extra)}
+.sec{font:700 12px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:16px max(16px,env(safe-area-inset-left,0px)) 4px}
+.tip{margin:10px max(16px,env(safe-area-inset-left,0px));padding:11px 13px;border-radius:12px;background:var(--spice-soft);font-size:13px}
+
+/* desktop: sheet becomes a left panel */
+@media (min-width:900px){
+  .topbar{right:auto;width:400px}
+  .sheet{top:calc(80px + env(safe-area-inset-top,0px));left:max(10px,env(safe-area-inset-left,0px));right:auto;bottom:10px;width:400px;height:auto!important;border:1px solid var(--line);border-radius:16px}
+  .grab{display:none}
+  .inner{padding-top:14px}
+}
+@media (max-width:899px){
+  .leaflet-control-zoom{display:none}
+  .leaflet-bottom{bottom:var(--sheetH);transition:bottom .28s}
+}
+@media (max-width:420px){.brand .sub{display:none}}
+
+/* map bits */
+.pin{width:28px;height:28px;border-radius:50%;background:var(--panel);border:2.5px solid var(--lagoon);color:var(--lagoon);font:800 12px var(--body);display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.pin.opt{border-style:dashed}
+.pin.home{background:var(--spice);border-color:#fff;color:#fff}
+.pin.nextpin{background:var(--spice);border-color:#fff;color:#fff;transform:scale(1.15)}
+.pin.extra{width:22px;height:22px;border-color:var(--extra);color:var(--extra);font-size:11px}
+.me{width:18px;height:18px;border-radius:50%;background:var(--gps);border:3px solid #fff;box-shadow:0 0 0 7px color-mix(in srgb,var(--gps) 30%,transparent)}
+.van{width:30px;height:30px;border-radius:9px;background:var(--spice);border:3px solid #fff;display:grid;place-items:center;box-shadow:0 3px 10px rgba(0,0,0,.4)}
+.van svg{width:16px;height:16px}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--panel);color:var(--ink);border:1px solid var(--line)}
+.leaflet-popup-content-wrapper{border-radius:14px;padding:0;overflow:hidden}
+.leaflet-popup-content{font:14px/1.45 var(--body);margin:0;width:250px!important}
+.pop .ph{height:140px;background:var(--raise);background-size:cover;background-position:center}
+.pop .ph.none{display:none}
+.pop .body{padding:10px 14px 12px}
+.pop .d{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--lagoon);font-weight:700}
+.pop .n{font:700 16px/1.2 var(--display);margin:2px 0 4px}
+.pop .x{color:var(--muted);font-size:13px;margin-bottom:8px}
+.pop a{color:var(--lagoon);font-weight:700;text-decoration:none}
+.pop .cr{font-size:10.5px;color:var(--muted);margin-top:6px}
+.leaflet-container a.leaflet-popup-close-button{color:#fff;text-shadow:0 1px 4px #000;top:6px;right:6px}
+.leaflet-control-attribution{font-size:9.5px;background:color-mix(in srgb,var(--panel) 75%,transparent)!important;color:var(--muted)}
+.leaflet-control-attribution a{color:var(--muted)}
+
+
+/* hamburger menu */
+.scrim{position:fixed;inset:0;z-index:1150;background:rgba(0,0,0,.35)}
+.menu{position:fixed;z-index:1200;top:calc(70px + env(safe-area-inset-top,0px));right:max(10px,env(safe-area-inset-right,0px));width:min(340px,calc(100% - 20px));
+  background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:8px;display:grid;gap:2px}
+.menu[hidden]{display:none}
+.mrow{display:grid;gap:6px;padding:8px}
+.mlabel{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.menu input[type=date]{width:100%}
+.mitem{display:flex;align-items:center;justify-content:space-between;gap:10px;border:0;background:transparent;padding:12px 8px;border-top:1px solid var(--line);font-size:14px;font-weight:600;text-align:left;cursor:pointer;color:var(--ink)}
+.mitem b{color:var(--muted);font-size:16px}
+.sw{width:38px;height:22px;border-radius:99px;background:var(--line);position:relative;flex:none;transition:background .2s}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s}
+.mitem[aria-checked=true] .sw{background:var(--lagoon)}
+.mitem[aria-checked=true] .sw::after{transform:translateX(16px)}
+/* photo stop overlay (demo) */
+.photo{position:fixed;z-index:1100;left:50%;top:calc(76px + env(safe-area-inset-top,0px));transform:translateX(-50%);width:min(440px,calc(100% - 20px));background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .3s,transform .3s}
+.photo.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
+.photo .img{aspect-ratio:16/10;max-width:100%;background:var(--raise) center/cover no-repeat;position:relative}
+.photo .img.loading::after{content:"Loading photo…";position:absolute;inset:0;display:grid;place-items:center;font-size:13px;color:var(--muted)}
+.photo .cap{padding:10px 14px 12px;display:grid;gap:2px}
+.photo .d{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--lagoon);font-weight:700}
+.photo .n{font:700 18px/1.2 var(--display)}
+.photo .x{font-size:13px;color:var(--muted)}
+.photo .foot{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:var(--muted)}
+.photo .foot button{border:1px solid var(--line);background:var(--raise);border-radius:9px;padding:5px 10px;font-weight:700;font-size:12px;cursor:pointer}
+.bar{height:3px;background:var(--line)}
+.bar i{display:block;height:100%;width:0;background:var(--spice)}
+.bar i.run{animation:fill 5s linear forwards}
+@keyframes fill{to{width:100%}}
+@media (min-width:900px){.photo{left:auto;right:20px;transform:none;top:calc(60px + env(safe-area-inset-top,0px))}.photo.show{transform:none}}
+
+/* stays */
+.chip.stay{border-color:var(--extra);color:var(--extra)}
+.chip.stay.active{background:var(--extra);color:var(--panel);border-color:var(--extra)}
+.pin.bed{width:30px;height:30px;border-radius:9px;background:var(--extra);border-color:#fff;color:#fff}
+.pin.bed svg{width:16px;height:16px}
+.pin.bed.alt{background:var(--panel);color:var(--extra);border-color:var(--extra);border-style:dashed}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--raise);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px}
+.seg button{border:0;background:transparent;border-radius:9px;padding:8px;font-weight:700;font-size:13px;cursor:pointer;color:var(--muted)}
+.seg.plan{margin-top:2px}
+.seg button.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.sum{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sum .box{background:var(--raise);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.sum .k{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.sum .v{font:700 20px/1.2 var(--display);font-variant-numeric:tabular-nums}
+.ppl{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.ppl input{width:64px;font:700 14px var(--body);padding:7px 8px;border:1px solid var(--line);border-radius:10px;background:var(--raise);color:var(--ink)}
+.night{padding:12px max(16px,env(safe-area-inset-right,0px)) 4px max(16px,env(safe-area-inset-left,0px));display:grid;gap:8px}
+.night h3{margin:0;font:700 15px var(--display)}
+.night h3 span{font:600 12px var(--body);color:var(--muted);margin-left:6px}
+.scard{border:1px solid var(--line);border-radius:14px;padding:11px 12px;display:grid;gap:4px;background:var(--panel)}
+.scard.pick{border:2px solid var(--extra)}
+.scard .top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.scard .nm{font-weight:700;min-width:0}
+.scard .pr{font:700 15px var(--body);white-space:nowrap;font-variant-numeric:tabular-nums}
+.scard .sm{font-size:12.5px;color:var(--muted)}
+.scard .acts{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}
+.scard .acts a,.scard .acts button{font-size:12.5px;font-weight:700;padding:6px 10px;border-radius:9px;border:1px solid var(--line);background:var(--raise);color:var(--ink);text-decoration:none;cursor:pointer}
+.badge{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:6px;background:var(--lagoon-soft);color:var(--lagoon);justify-self:start}
+.badge.c{background:var(--spice-soft);color:var(--spice)}
+@media (prefers-reduced-motion:reduce){.sheet,.photo{transition:none}}
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="Trip map"></div>
+
+<div class="topbar">
+  <div class="brand">
+    <h1>Kerala Road Trip</h1>
+    <div class="sub" id="sub">Bandipur · Wayanad · Fort Kochi · Munnar · Marayoor</div>
+  </div>
+  <div class="prog" id="prog">5 days</div>
+  <button class="iconbtn" id="menuBtn" aria-label="Open menu" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+</div>
+<div class="scrim" id="scrim" hidden></div>
+<nav class="menu" id="menu" hidden aria-label="Settings">
+  <div class="mrow"><div class="mlabel">Trip plan</div>
+    <div class="seg plan" role="radiogroup" aria-label="Trip plan"><button data-p="original">Original</button><button data-p="agoda">Agoda stays</button></div></div>
+  <div class="mrow"><div class="mlabel">Theme</div>
+    <div class="seg theme" role="radiogroup" aria-label="Theme"><button data-t="light">Light</button><button data-t="dark">Dark</button></div></div>
+  <div class="mrow"><label class="mlabel" for="startDate">Day 1 date</label><input type="date" id="startDate"></div>
+  <button class="mitem" id="followBtn" role="switch" aria-checked="true"><span>Map follows the van / my position</span><i class="sw"></i></button>
+  <button class="mitem" id="stayMenu"><span>Where to stay (Agoda prices)</span><b>›</b></button>
+  <button class="mitem" id="restartMenu"><span>Restart demo from the start</span><b>↺</b></button>
+</nav>
+
+<div class="photo" id="photo" aria-live="polite">
+  <div class="img" id="phImg"></div>
+  <div class="bar"><i id="phBar"></i></div>
+  <div class="cap">
+    <div class="d" id="phDay"></div>
+    <div class="n" id="phName"></div>
+    <div class="x" id="phNote"></div>
+    <div class="foot"><span id="phCredit"></span><button id="phSkip">Continue ›</button></div>
+  </div>
+</div>
+
+<section class="sheet" id="sheet" aria-label="Trip plan">
+  <div class="grab" id="grab" role="button" tabindex="0" aria-label="Expand or collapse the plan"><span></span></div>
+  <div class="inner" id="top">
+    <div class="gpsrow">
+      <button class="btn primary" id="gpsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg><span>Live GPS</span></button>
+      <button class="btn" id="demoBtn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg><span>Demo</span></button>
+      <button class="btn" id="restartBtn" hidden aria-label="Restart demo from the beginning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
+    </div>
+    <div class="status" id="gpsStatus">Demo previews the drive. Live GPS tracks you on the day.</div>
+    <div class="nextcard" id="nextCard"><div class="dot" id="nextDay">D1</div><div><div class="lbl">Next stop</div><div class="nm" id="nextName">—</div><div class="meta" id="nextMeta">—</div></div></div>
+    <div class="days" id="days" role="tablist"></div>
+  </div>
+  <div class="scroll" id="scroll">
+    <div class="dayhead" id="dayHead"></div>
+    <div id="list"></div>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const HOME=[13.3505,77.6493];
+/* w: Wikipedia article titles to pull a photo from (first one with an image wins) */
+const DAYS=[
+ {n:1,title:"Home to Wayanad via Bandipur",km:"≈ 360 km · 9 hrs with stops",
+  path:[HOME,[13.25,77.66],[13.17,77.63],[13.10,77.596],[13.035,77.597],[13.0,77.53],[12.93,77.50],[12.91,77.48],[12.72,77.28],[12.52,76.90],[12.42,76.69],[12.30,76.64],[12.12,76.68],[11.94,76.67],[11.81,76.69],[11.6656,76.6287],[11.70,76.50],[11.68,76.40],[11.665,76.26],[11.6268,76.2343],[11.63,76.215],[11.62,76.15],[11.61,76.08],[11.542,76.027],[11.523,76.023],[11.517,76.02],[11.55,76.04]],
+  stops:[
+   {t:"4:30 AM",n:"Leave Acharlahalli",p:HOME,x:"Early start beats Bengaluru traffic. Take the Bengaluru–Mysuru expressway.",home:true},
+   {t:"8:30 AM",n:"Breakfast in Mysuru",p:[12.3052,76.6552],x:"Old-Mysuru tiffin stop with a drive past Mysore Palace.",w:["Mysore_Palace"]},
+   {t:"9:30 AM",n:"Nanjangud temple town",p:[12.12,76.68],x:"Srikanteshwara temple towers right on NH766. Quick stop.",w:["Srikanteshwara_Temple,_Nanjangud","Nanjangud"]},
+   {t:"11:00 AM",n:"Bandipur forest stretch",p:[11.6656,76.6287],x:"Drive slow, watch for elephants and deer. No stopping or feeding animals. Night ban 9 PM–6 AM.",w:["Bandipur_National_Park"]},
+   {t:"12:00 PM",n:"Muthanga, into Kerala",p:[11.68,76.40],x:"Wayanad Wildlife Sanctuary and the border check post. Keep permit papers handy.",w:["Wayanad_Wildlife_Sanctuary","Muthanga"]},
+   {t:"1:45 PM",n:"Edakkal Caves",p:[11.6268,76.2343],x:"Stone Age rock carvings, about 1 km uphill. Last entry before 4 PM. Closed Mondays.",w:["Edakkal_Caves"]},
+   {t:"3:45 PM",n:"Phantom Rock",p:[11.63,76.215],x:"Skull-shaped boulder near Ambalavayal. Photo stop.",w:["Phantom_Rock","Ambalavayal"]},
+   {t:"4:45 PM",n:"Pookode Lake",p:[11.542,76.027],x:"Calm forest lake, short pedal-boat ride.",w:["Pookode_Lake"]},
+   {t:"5:30 PM",n:"Chain Tree",p:[11.523,76.023],x:"The chained ficus with a local legend, right by the road.",w:["Chain_Tree","Lakkidi"]},
+   {t:"5:45 PM",n:"Lakkidi viewpoint & stay",p:[11.517,76.02],x:"Sunset over the ghat. Stay around Vythiri, close to tomorrow's ghat road.",w:["Lakkidi","Vythiri"]},
+   {t:"Optional",n:"Banasura Sagar Dam",p:[11.672,75.958],x:"India's largest earth dam. Swap in for Edakkal if Day 1 is a Monday.",w:["Banasura_Sagar_Dam"],opt:true}
+  ],
+  nav:{o:HOME,d:[11.55,76.04],w:[[12.3052,76.6552],[11.6656,76.6287],[11.6268,76.2343]]}},
+ {n:2,title:"Down the ghat to Fort Kochi",km:"≈ 250 km · 7 hrs",
+  path:[[11.55,76.04],[11.517,76.02],[11.47,75.99],[11.415,75.94],[11.30,75.88],[11.18,75.86],[11.00,76.00],[10.89,76.07],[10.84,76.03],[10.59,76.02],[10.217,76.20],[10.14,76.23],[10.025,76.31],[9.967,76.30],[9.94,76.26],[9.9574,76.2594],[9.9658,76.2421]],
+  stops:[
+   {t:"6:15 AM",n:"Thamarassery ghat",p:[11.47,75.99],x:"9 hairpin bends with valley views. Go early: jams are common later.",w:["Thamarassery_Churam","Thamarassery"]},
+   {t:"Optional",n:"Kozhikode beach & halwa",p:[11.255,75.77],x:"15 min detour for the beach and Kozhikodan halwa on SM Street.",w:["Kozhikode_Beach","Kozhikode"],opt:true},
+   {t:"9:30 AM",n:"Bharathapuzha at Kuttippuram",p:[10.84,76.03],x:"Breakfast by Kerala's second-longest river.",w:["Bharathappuzha"]},
+   {t:"11:30 AM",n:"Cheraman Juma Masjid",p:[10.217,76.20],x:"Kodungallur, part of the old Muziris port. One of India's oldest mosques.",w:["Cheraman_Juma_Mosque","Cheraman_Perumal_Juma_Mosque","Kodungallur"]},
+   {t:"Optional",n:"Cherai Beach",p:[10.14,76.18],x:"Quiet beach between sea and backwaters. 15 min detour for lunch.",w:["Cherai_Beach"],opt:true},
+   {t:"2:30 PM",n:"Jew Town & Mattancherry",p:[9.9574,76.2594],x:"Paradesi Synagogue, spice and antique shops, Dutch Palace (closed Fridays).",w:["Paradesi_Synagogue","Mattancherry_Palace"]},
+   {t:"4:15 PM",n:"St. Francis Church",p:[9.966,76.2425],x:"India's oldest European church, where Vasco da Gama was first buried.",w:["St._Francis_Church,_Kochi"]},
+   {t:"4:40 PM",n:"Santa Cruz Basilica",p:[9.9637,76.2431],x:"Bright Gothic interiors, a short walk away.",w:["Santa_Cruz_Cathedral_Basilica,_Kochi","Santa_Cruz_Basilica"]},
+   {t:"5:15 PM",n:"Chinese fishing nets",p:[9.9682,76.2422],x:"Park the Tempo and walk the beachfront. Sunset at the nets.",w:["Chinese_fishing_nets"]},
+   {t:"6:30 PM",n:"Kathakali show",p:[9.9636,76.2437],x:"Kerala's classical dance-drama. Arrive early to watch the make-up.",w:["Kathakali"],opt:true}
+  ],
+  nav:{o:[11.55,76.04],d:[9.9682,76.2422],w:[[11.415,75.94],[10.84,76.03],[10.217,76.20]]}},
+ {n:3,title:"Kochi up to Munnar",km:"≈ 140 km · 5 hrs with stops",
+  path:[[9.9658,76.2421],[9.94,76.26],[9.967,76.32],[9.95,76.38],[9.98,76.58],[10.06,76.63],[10.05,76.78],[10.033,76.887],[10.04,76.92],[10.01,76.95],[10.05,77.00],[10.0889,77.0595],[10.096,77.067],[10.0889,77.0595],[10.106,77.124],[10.115,77.17],[10.106,77.124],[10.0889,77.0595]],
+  stops:[
+   {t:"7:00 AM",n:"Leave Fort Kochi",p:[9.9658,76.2421],x:"East on NH85 via Muvattupuzha and Kothamangalam.",w:["Kochi"]},
+   {t:"Optional",n:"Bhoothathankettu",p:[10.135,76.66],x:"Forest dam and river near Kothamangalam. 20 min detour.",w:["Bhoothathankettu"],opt:true},
+   {t:"10:15 AM",n:"Cheeyappara waterfalls",p:[10.033,76.887],x:"Seven-step cascade right beside the road.",w:["Cheeyappara_Waterfalls","Cheeyappara"]},
+   {t:"10:35 AM",n:"Valara waterfalls",p:[10.04,76.92],x:"Taller fall a few km on, seen across the gorge.",w:["Valara_Waterfalls","Valara"]},
+   {t:"12:30 PM",n:"Munnar town",p:[10.0889,77.0595],x:"Lunch and check-in. Confirm Tempo parking at your stay.",w:["Munnar"]},
+   {t:"2:30 PM",n:"Tea Museum",p:[10.096,77.067],x:"How tea is made, with fresh tea to buy.",w:["Tata_Tea_Museum","Kannan_Devan_Hills","Munnar"]},
+   {t:"4:00 PM",n:"Mattupetty Dam",p:[10.106,77.124],x:"Boating on the lake; elephants sometimes graze on the far bank.",w:["Mattupetty_Dam","Mattupetty"]},
+   {t:"4:45 PM",n:"Echo Point",p:[10.115,77.17],x:"Shout across the lake and hear it bounce back.",w:["Echo_Point,_Munnar","Mattupetty"]}
+  ],
+  nav:{o:[9.9682,76.2422],d:[10.115,77.17],w:[[10.06,76.63],[10.033,76.887],[10.0889,77.0595]]}},
+ {n:4,title:"Munnar, slow full day",km:"≈ 90 km of local driving",
+  path:[[10.0889,77.0595],[10.12,77.06],[10.152,77.06],[10.12,77.06],[10.0889,77.0595],[10.106,77.124],[10.115,77.17],[10.143,77.199],[10.125,77.245],[10.143,77.199],[10.115,77.17],[10.106,77.124],[10.0889,77.0595],[10.06,77.10],[10.035,77.155],[10.06,77.10],[10.0889,77.0595]],
+  stops:[
+   {t:"Optional",n:"Kolukkumalai sunrise",p:[10.07,77.22],x:"World's highest tea estate. 4 AM jeep from Suryanelli; arrive above the clouds.",w:["Kolukkumalai"],opt:true},
+   {t:"8:30 AM",n:"Eravikulam National Park",p:[10.152,77.06],x:"Book online. Park bus to the grasslands; look for Nilgiri tahr.",w:["Eravikulam_National_Park"]},
+   {t:"12:30 PM",n:"Kundala Lake",p:[10.143,77.199],x:"Arch dam, shikara boats and cherry trees on the Top Station road.",w:["Kundala_Dam","Kundala_Lake"]},
+   {t:"1:30 PM",n:"Top Station",p:[10.125,77.245],x:"Big views into Tamil Nadu if the mist clears.",w:["Top_Station"]},
+   {t:"5:15 PM",n:"Lockhart Gap viewpoint",p:[10.035,77.155],x:"Sunset over the Cardamom Hills and tea slopes.",w:["Cardamom_Hills","Munnar"]}
+  ],
+  nav:{o:[10.0889,77.0595],d:[10.125,77.245],w:[[10.152,77.06],[10.143,77.199]]}},
+ {n:5,title:"Scenic way home via Marayoor",km:"≈ 560 km · 12–13 hrs",
+  path:[[10.0889,77.0595],[10.15,77.09],[10.21,77.12],[10.276,77.16],[10.35,77.20],[10.45,77.23],[10.585,77.25],[10.99,77.29],[11.19,77.27],[11.28,77.58],[11.47,77.87],[11.66,78.15],[12.13,78.16],[12.52,78.21],[12.74,77.83],[12.78,77.77],[12.85,77.66],[12.917,77.623],[12.956,77.70],[13.0,77.69],[13.07,77.66],[13.17,77.66],[13.25,77.66],HOME],
+  stops:[
+   {t:"7:00 AM",n:"Leave Munnar",p:[10.0889,77.0595],x:"North on the Marayoor road instead of going back to Kochi.",w:["Munnar"]},
+   {t:"7:45 AM",n:"Lakkam waterfalls",p:[10.21,77.12],x:"Short forest walk to a pool below the falls.",w:["Lakkam_Waterfalls","Marayoor"]},
+   {t:"8:30 AM",n:"Marayoor sandalwood & dolmens",p:[10.276,77.16],x:"Kerala's only natural sandalwood forest and Stone Age burial dolmens.",w:["Marayoor"]},
+   {t:"9:30 AM",n:"Chinnar Wildlife Sanctuary",p:[10.35,77.20],x:"Dry thorn forest and elephant country. Narrow road, daylight only.",w:["Chinnar_Wildlife_Sanctuary"]},
+   {t:"11:30 AM",n:"Udumalpet",p:[10.585,77.25],x:"The plains begin. Early lunch.",w:["Udumalaipettai"]},
+   {t:"4:30 PM",n:"Tea break, Salem",p:[11.66,78.15],x:"Four-lane NH44 from here to Hosur.",w:["Salem,_Tamil_Nadu"]},
+   {t:"9:00 PM",n:"Home, Acharlahalli",p:HOME,x:"Loop complete.",home:true}
+  ],
+  nav:{o:[10.0889,77.0595],d:HOME,w:[[10.276,77.16],[10.585,77.25],[11.66,78.15]]}}
+];
+
+/* ---------- plan switch: "agoda" reroutes each night to the best-price Agoda stay ---------- */
+const DEFAULT_PLAN="original";
+let PLAN=DEFAULT_PLAN;try{const p=localStorage.getItem('krt-plan');if(p==='original'||p==='agoda')PLAN=p}catch(e){}
+const KALPETTA=[11.608,76.083],FKSTAY=[9.9635,76.2500],ADIMALI=[10.012,76.951],MUNNAR=[10.0889,77.0595];
+if(PLAN==='agoda'){
+  const d1=DAYS[0],d2=DAYS[1],d3=DAYS[2],d4=DAYS[3],d5=DAYS[4];
+  // Day 1: sunset at Lakkidi, then sleep in Kalpetta
+  const lk=d1.stops.find(s=>s.n.startsWith('Lakkidi'));lk.n='Lakkidi viewpoint';lk.x='Sunset over the ghat, then 25 min back to Kalpetta.';
+  d1.stops.splice(d1.stops.indexOf(lk)+1,0,{t:"6:45 PM",n:"Stay · Octagon Hotels, Kalpetta",p:KALPETTA,x:"Agoda best price: whole house, 14 beds, 9 bathrooms. About ₹3,443 for the night.",stay:true});
+  d1.path.push(KALPETTA);d1.nav.d=KALPETTA;d1.km="≈ 385 km · 9.5 hrs with stops";
+  // Day 2: start 15 min earlier from Kalpetta, check in near Fort Kochi
+  d2.path.unshift(KALPETTA,[11.58,76.06]);d2.nav.o=KALPETTA;
+  d2.stops.unshift({t:"5:45 AM",n:"Leave Kalpetta",p:KALPETTA,x:"15 min earlier than the original plan to reach the ghat before traffic."});
+  const jt=d2.stops.findIndex(s=>s.n.startsWith('Jew Town'));
+  d2.stops.splice(jt,0,{t:"2:00 PM",n:"Stay · Collection O Calvathy Road",p:FKSTAY,x:"Agoda best price: 7 rooms ≈ ₹12,300. Drop bags, then walk to Jew Town.",stay:true});
+  d2.path.splice(d2.path.length-2,0,FKSTAY);
+  // Day 3: drop bags in Adimali on the way up, return there at night
+  const vl=d3.stops.findIndex(s=>s.n.startsWith('Valara'));
+  d3.stops.splice(vl+1,0,{t:"11:15 AM",n:"Stay · Sangeetha Tourist Home, Adimali",p:ADIMALI,x:"Agoda best price: 7 rooms ≈ ₹7,000 a night. Drop bags and lunch here; Munnar is 30 min up.",stay:true});
+  d3.stops.find(s=>s.n==='Munnar town').t='12:30 PM';
+  d3.stops.push({t:"6:30 PM",n:"Back to Adimali",p:ADIMALI,x:"30 min drive down for dinner and sleep.",stay:true});
+  d3.path.push([10.05,77.00],ADIMALI);d3.nav.d=ADIMALI;d3.km="≈ 170 km · 5.5 hrs with stops";
+  // Day 4: Munnar day from Adimali
+  d4.path.unshift(ADIMALI,[10.05,77.00]);d4.path.push([10.05,77.00],ADIMALI);d4.nav.o=ADIMALI;d4.km="≈ 150 km of driving";
+  d4.stops.unshift({t:"7:15 AM",n:"Leave Adimali",p:ADIMALI,x:"Up to Munnar for Eravikulam. Pack lunch or eat near Kundala."});
+  const kol=d4.stops.find(s=>s.n.startsWith('Kolukkumalai'));if(kol)kol.x+=' From Adimali this needs a 3:30 AM start.';
+  d4.stops.push({t:"7:00 PM",n:"Back to Adimali",p:ADIMALI,x:"Second night at Sangeetha Tourist Home.",stay:true});
+  // Day 5: start from Adimali, half an hour earlier
+  d5.path.unshift(ADIMALI,[10.05,77.00]);d5.nav.o=ADIMALI;d5.km="≈ 590 km · 13 hrs";
+  d5.stops[0]={t:"6:30 AM",n:"Leave Adimali",p:ADIMALI,x:"Up through Munnar and north on the Marayoor road.",w:["Munnar"]};
+}
+
+/* more of Kerala, if you add days */
+const EXTRAS=[
+ {n:"Alleppey backwaters",p:[9.512,76.348],x:"Overnight houseboat through paddy fields and canals. +1 day from Munnar.",w:["Kerala_backwaters","Alappuzha"]},
+ {n:"Kumarakom",p:[9.6175,76.4301],x:"Quieter backwaters on Vembanad Lake, with a bird sanctuary.",w:["Kumarakom"]},
+ {n:"Athirappilly Falls",p:[10.285,76.57],x:"Kerala's biggest waterfall. +2 hrs on the Kochi day.",w:["Athirappilly_Falls"]},
+ {n:"Thekkady & Periyar",p:[9.6031,77.1615],x:"Lake boat safari and spice farms. +1 day south of Munnar.",w:["Periyar_National_Park"]},
+ {n:"Varkala cliffs",p:[8.7379,76.7163],x:"Red cliffs over the beach in the far south. +2 days.",w:["Varkala_Beach","Varkala"]},
+ {n:"Bekal Fort",p:[12.392,75.033],x:"Huge seaside fort in the north, near Kasaragod. +1 day.",w:["Bekal_Fort"]}
+];
+
+
+/* ---------- stays: Agoda, checked 26 Oct 2026 for 14 adults, Dec 25-29. Prices before taxes and fees. ---------- */
+const AG=(u,ci,n)=>`${u}?checkIn=${ci}&los=${n}&rooms=7&adults=14&children=0&currencyCode=INR`;
+const STAYS=[
+ {date:"Fri 25 Dec",place:"Wayanad",day:1,nights:1,ci:"2026-12-25",opts:[
+   {tier:"cheap",n:"Octagon Hotels by Aatreyaa",area:"Kalpetta · on the way to the ghat",p:[11.608,76.083],rate:3443,whole:true,fit:"Entire house · 14 beds · 9 bathrooms",score:"New on Agoda, no reviews yet",url:"https://www.agoda.com/en-gb/octagon-hotels-by-aatreyaa/hotel/wayanad-in.html"},
+   {tier:"value",n:"Tomz Villa",area:"Sulthan Bathery · 15 min from Edakkal",p:[11.663,76.258],rate:5406,whole:true,fit:"Entire house · 5 bedrooms · 8 beds · 4 bathrooms",score:"8.9 Excellent · 12 reviews",url:"https://www.agoda.com/en-gb/tomz-villa/hotel/wayanad-in.html"}]},
+ {date:"Sat 26 Dec",place:"Fort Kochi",day:2,nights:1,ci:"2026-12-26",opts:[
+   {tier:"cheap",n:"Collection O Calvathy Road",area:"Fort Kochi · 1.2 km from St. Francis Church",p:[9.9635,76.2500],rate:1759,whole:false,fit:"Hotel · 7 rooms for 14",score:"5.6 · 175 reviews",url:"https://www.agoda.com/en-gb/avva-hotels-h50634120/hotel/kochi-in.html"},
+   {tier:"value",n:"Panakal Residency",area:"Fort Kochi · 600 m from the fishing nets",p:[9.9615,76.2445],rate:3360,whole:false,fit:"Hotel · 7 double rooms",score:"8.1 Excellent · 142 reviews",url:"https://www.agoda.com/en-gb/panakal-residency-fort-kochi/hotel/kochi-in.html"}]},
+ {date:"Sun 27 – Tue 29 Dec",place:"Munnar",day:3,nights:2,ci:"2026-12-27",opts:[
+   {tier:"cheap",n:"Sangeetha Tourist Home",area:"Adimali · 13 km before Munnar town",p:[10.012,76.951],rate:1003,whole:false,fit:"Hotel · 7 rooms for 14",score:"7.6 Very good · 8 reviews",url:"https://www.agoda.com/en-gb/sangeetha-tourist-home-adimali/hotel/munnar-in.html"},
+   {tier:"value",n:"Echo Haven Glamping",area:"Bison Valley · 6 km from Munnar",p:[10.035,77.095],rate:1197,whole:false,fit:"Glamping tents · 7 tents for 14",score:"8.9 Excellent · 12 reviews",url:"https://www.agoda.com/en-gb/echo-haven-glamping-tent-munnar/hotel/munnar-in.html"}]}
+];
+
+/* ---------- geometry ---------- */
+const R=6371,rad=d=>d*Math.PI/180;
+function hav(a,b){const dl=rad(b[0]-a[0]),dg=rad(b[1]-a[1]);const s=Math.sin(dl/2)**2+Math.cos(rad(a[0]))*Math.cos(rad(b[0]))*Math.sin(dg/2)**2;return 2*R*Math.asin(Math.sqrt(s))}
+const ROUTE=[];DAYS.forEach(d=>d.path.forEach((p,i)=>{if(ROUTE.length&&i===0)return;ROUTE.push({p,day:d.n})}));
+let acc=0;ROUTE.forEach((r,i)=>{if(i)acc+=hav(ROUTE[i-1].p,r.p)*1.25;r.km=acc});
+const TOTAL=acc;
+function snap(pt){let best={off:1e9};const kx=Math.cos(rad(pt[0]));
+  for(let i=1;i<ROUTE.length;i++){const a=ROUTE[i-1].p,b=ROUTE[i].p;const ax=a[1]*kx,ay=a[0],bx=b[1]*kx,by=b[0],px=pt[1]*kx,py=pt[0];
+    const dx=bx-ax,dy=by-ay,L2=dx*dx+dy*dy||1e-12;let t=((px-ax)*dx+(py-ay)*dy)/L2;t=Math.max(0,Math.min(1,t));
+    const q=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];const off=hav(pt,q);
+    if(off<best.off)best={off,km:ROUTE[i-1].km+(ROUTE[i].km-ROUTE[i-1].km)*t,day:ROUTE[i].day}}
+  return best}
+const STOPS=[];DAYS.forEach(d=>{let last=-1;d.stops.forEach((s,i)=>{let best={off:1e9,km:0};
+  ROUTE.forEach((r,j)=>{const inDay=r.day===d.n||(j+1<ROUTE.length&&ROUTE[j+1].day===d.n);if(!inDay||r.km<last||best.off<1)return;const o=hav(r.p,s.p);if(o<best.off-0.05)best={off:o,km:r.km}});
+  if(s.home)best.km=d.n===1?0:TOTAL;if(!s.opt&&!s.home)last=best.km;s.km=best.km;s.day=d.n;s.idx=i;STOPS.push(s)})});
+STOPS.sort((a,b)=>a.km-b.km||a.day-b.day);
+
+/* ---------- theme ---------- */
+const root=document.documentElement;
+const sysDark=()=>matchMedia('(prefers-color-scheme: dark)').matches;
+const isDark=()=>root.dataset.theme?root.dataset.theme==='dark':sysDark();
+try{const t=localStorage.getItem('krt-theme');if(t==='dark'||t==='light')root.dataset.theme=t}catch(e){}
+function paintTheme(){const d=isDark();document.querySelectorAll('.seg.theme button').forEach(b=>{const on=(b.dataset.t==='dark')===d;b.classList.toggle('on',on);b.setAttribute('aria-checked',on)});
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content',d?'#000000':'#ffffff')}
+document.querySelectorAll('.seg.theme button').forEach(b=>{b.setAttribute('role','radio');b.onclick=()=>{root.dataset.theme=b.dataset.t;try{localStorage.setItem('krt-theme',b.dataset.t)}catch(e){}paintTheme()}});
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{if(!root.dataset.theme)paintTheme()});
+
+/* ---------- map ---------- */
+const map=L.map('map',{zoomControl:false,attributionControl:true}).setView([11.5,76.9],7);
+L.control.zoom({position:'bottomright'}).addTo(map);
+const esri='https://server.arcgisonline.com/ArcGIS/rest/services/';
+L.tileLayer(esri+'World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Imagery © Esri, Maxar'}).addTo(map);
+L.tileLayer(esri+'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:19}).addTo(map);
+paintTheme();
+
+const ROUTE_ON='#ffc23d',ROUTE_OFF='rgba(255,255,255,.8)';
+const lines={};
+DAYS.forEach(d=>{L.polyline(d.path,{color:'#000',weight:8,opacity:.4,lineJoin:'round',interactive:false}).addTo(map);
+  lines[d.n]=L.polyline(d.path,{color:ROUTE_OFF,weight:4,lineJoin:'round'}).addTo(map).on('click',()=>selectDay(d.n))});
+
+/* Photos from Wikimedia Commons (free licence), embedded so they load without an API call */
+const IMG={
+"Thamarassery ghat": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/View_point_of_Thamarassery_Churam.jpg/960px-View_point_of_Thamarassery_Churam.jpg",
+"Chinese fishing nets": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/Kochi%2C_Fishing_nets_at_sunset%2C_Kerala%2C_India.jpg/960px-Kochi%2C_Fishing_nets_at_sunset%2C_Kerala%2C_India.jpg",
+"Leave Fort Kochi": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Fort_Kochi_-_Fisher_-_4.jpg/960px-Fort_Kochi_-_Fisher_-_4.jpg",
+"Chain Tree": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Chain_Tree_at_Lakkidi.jpg/960px-Chain_Tree_at_Lakkidi.jpg",
+"Bhoothathankettu": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ed/DAM_INDIA.jpg/960px-DAM_INDIA.jpg",
+"Cheeyappara waterfalls": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Potrait_view_of_Cheeyappara_Waterfalls.jpg/960px-Potrait_view_of_Cheeyappara_Waterfalls.jpg",
+"Lakkam waterfalls": "https://upload.wikimedia.org/wikipedia/en/thumb/f/f8/Lakkom_Waterfalls.jpg/960px-Lakkom_Waterfalls.jpg",
+"Kathakali show": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Kathakali_-Play_with_Kaurava.jpg/960px-Kathakali_-Play_with_Kaurava.jpg",
+"Varkala cliffs": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Varkala_beach_from_above.jpg/960px-Varkala_beach_from_above.jpg",
+"Echo Point": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/73/Munnar_-_views_from_Munnar_%2832%29.jpg/960px-Munnar_-_views_from_Munnar_%2832%29.jpg",
+"Lakkidi viewpoint & stay": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/View_point_of_Thamarassery_Churam.jpg/960px-View_point_of_Thamarassery_Churam.jpg",
+"Valara waterfalls": "https://upload.wikimedia.org/wikipedia/commons/c/ca/Valara_Waterfalls_%284%29.jpg",
+"Kolukkumalai sunrise": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c4/The_Beautiful_landscape_view_from_the_Kolukkumalai_Peak%2C_Munnar.jpg/960px-The_Beautiful_landscape_view_from_the_Kolukkumalai_Peak%2C_Munnar.jpg",
+"Bharathapuzha at Kuttippuram": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/View_from_Chamravattam_Bridge_-_panoramio.jpg/960px-View_from_Chamravattam_Bridge_-_panoramio.jpg",
+"Phantom Rock": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Phantom_Rock4.jpg/960px-Phantom_Rock4.jpg",
+"Edakkal Caves": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/Edakkal_Cave.jpg/960px-Edakkal_Cave.jpg",
+"Pookode Lake": "https://upload.wikimedia.org/wikipedia/en/0/0d/PookodeLake.jpg",
+"Kozhikode beach & halwa": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dc/Kozhikode_Beach_Coastline.jpg/960px-Kozhikode_Beach_Coastline.jpg",
+"Mattupetty Dam": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Mattupetty_Dam.jpg/960px-Mattupetty_Dam.jpg",
+"Bandipur forest stretch": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/89/Prince_in_the_Jungle_crop.jpg/960px-Prince_in_the_Jungle_crop.jpg",
+"Munnar town": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b9/Munnar_Overview.jpg/960px-Munnar_Overview.jpg",
+"Marayoor sandalwood & dolmens": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/Dolmen%2C_Marayoor_ksrtmun2k24_%289%29.jpg/960px-Dolmen%2C_Marayoor_ksrtmun2k24_%289%29.jpg",
+"Cheraman Juma Masjid": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/Cheraman_Juma_Palli_%28%E0%B4%9A%E0%B5%87%E0%B4%B0%E0%B4%AE%E0%B4%BE%E0%B5%BB_%E0%B4%9C%E0%B5%81%E0%B4%AE%E0%B4%BE_%E0%B4%AA%E0%B4%B3%E0%B5%8D%E0%B4%B3%E0%B4%BF%29.jpg/960px-Cheraman_Juma_Palli_%28%E0%B4%9A%E0%B5%87%E0%B4%B0%E0%B4%AE%E0%B4%BE%E0%B5%BB_%E0%B4%9C%E0%B5%81%E0%B4%AE%E0%B4%BE_%E0%B4%AA%E0%B4%B3%E0%B5%8D%E0%B4%B3%E0%B4%BF%29.jpg",
+"Udumalpet": "https://upload.wikimedia.org/wikipedia/en/c/cc/Tirumurthy.jpg",
+"Eravikulam National Park": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Eravikulam_National_Park_%2849444006652%29.jpg/960px-Eravikulam_National_Park_%2849444006652%29.jpg",
+"Bekal Fort": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Bakel_Fort_Beach_Kasaragod7.jpg/960px-Bakel_Fort_Beach_Kasaragod7.jpg",
+"Cherai Beach": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Sunrise_at_Cherai_Beach.jpg/960px-Sunrise_at_Cherai_Beach.jpg",
+"Kundala Lake": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Munnar_Kundala_Dam_%284224019133%29.jpg/960px-Munnar_Kundala_Dam_%284224019133%29.jpg",
+"Alleppey backwaters": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ee/House_Boat_DSW.jpg/960px-House_Boat_DSW.jpg",
+"Kumarakom": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Kumarkom.jpg/960px-Kumarkom.jpg",
+"Leave Munnar": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/Munnar_tea_gardens.jpg/960px-Munnar_tea_gardens.jpg",
+"Athirappilly Falls": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/The_View_of_the_Athirapally_Falls_during_the_onset_of_Monsoon.jpg/960px-The_View_of_the_Athirapally_Falls_during_the_onset_of_Monsoon.jpg",
+"Lockhart Gap viewpoint": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Kerala_munnar_mountain_top.jpg/960px-Kerala_munnar_mountain_top.jpg",
+"Breakfast in Mysuru": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/Mysore_Palace_Morning.jpg/960px-Mysore_Palace_Morning.jpg",
+"Tea break, Salem": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Salem_city_from_Hills.jpg/960px-Salem_city_from_Hills.jpg",
+"Jew Town & Mattancherry": "https://upload.wikimedia.org/wikipedia/commons/b/bb/Jewish_synagouge_kochi_india.jpg",
+"Banasura Sagar Dam": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f0/Banasurasagar_Main_Dam.jpg/960px-Banasurasagar_Main_Dam.jpg",
+"Chinnar Wildlife Sanctuary": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Chinnar_Wildlife_Sanctuary.jpg/960px-Chinnar_Wildlife_Sanctuary.jpg",
+"Nanjangud temple town": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/26/Srikanteshvara_Temple%2C_Nanjangud.JPG/960px-Srikanteshvara_Temple%2C_Nanjangud.JPG",
+"Santa Cruz Basilica": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Santa_Cruz_Basilica_-_200_MP_03.jpg/960px-Santa_Cruz_Basilica_-_200_MP_03.jpg",
+"Tea Museum": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/Munnar_-_Tea_Plantations.jpg/960px-Munnar_-_Tea_Plantations.jpg",
+"Thekkady & Periyar": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/66/Periyar_National_Park.JPG/960px-Periyar_National_Park.JPG",
+"St. Francis Church": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/34/St_Francis_Church_Fort_Kochi_DSC_1048.JPG/960px-St_Francis_Church_Fort_Kochi_DSC_1048.JPG",
+"Muthanga, into Kerala": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f7/Misty_Wayanad_Wildlife_Sanctuary%2C_Muthanga_Range_-_panoramio_%283%29.jpg/960px-Misty_Wayanad_Wildlife_Sanctuary%2C_Muthanga_Range_-_panoramio_%283%29.jpg",
+"Top Station": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Munnar_Top_station.jpg/960px-Munnar_Top_station.jpg"
+};
+/* ---------- photos (Wikipedia / Wikimedia Commons) ---------- */
+const photoCache=new Map();
+async function photoFor(item){
+  if(IMG[item.n])return{src:IMG[item.n],page:'https://commons.wikimedia.org/wiki/File:'+decodeURIComponent(IMG[item.n].split('/').pop().replace(/^960px-/,''))};
+  if(!item.w)return null;const key=item.w.join('|');if(photoCache.has(key))return photoCache.get(key);
+  const job=(async()=>{for(const t of item.w){try{
+      const r=await fetch('https://en.wikipedia.org/api/rest_v1/page/summary/'+encodeURIComponent(t));if(!r.ok)continue;const j=await r.json();
+      const o=j.originalimage,th=j.thumbnail;let src=null;
+      if(o&&o.width<=1600)src=o.source;else if(th)src=th.source.replace(/\/\d+px-/,'/1000px-');
+      if(src)return{src,title:j.title,page:j.content_urls?.mobile?.page||('https://en.wikipedia.org/wiki/'+t)}}catch(e){}}
+    return null})();
+  photoCache.set(key,job);return job}
+function preload(item){photoFor(item).then(p=>{if(p){const i=new Image();i.src=p.src}})}
+
+/* ---------- pins + popups ---------- */
+const gmLink=p=>`https://www.google.com/maps/search/?api=1&query=${p[0]},${p[1]}`;
+function gmNav(d){const v=d.nav,f=p=>p.join(',');return`https://www.google.com/maps/dir/?api=1&origin=${f(v.o)}&destination=${f(v.d)}&travelmode=driving${v.w.length?'&waypoints='+v.w.map(f).join('%7C'):''}`}
+function popHtml(s,label){return`<div class="pop"><div class="ph"></div><div class="body"><div class="d">${label}</div><div class="n">${s.n}</div><div class="x">${s.x}</div><a href="${gmLink(s.p)}" target="_blank" rel="noopener">Open in Google Maps ↗</a><div class="cr"></div></div></div>`}
+function wirePhoto(marker,item){marker.on('popupopen',async e=>{const el=e.popup.getElement();const ph=el.querySelector('.ph'),cr=el.querySelector('.cr');
+  const p=await photoFor(item);if(!p){ph.classList.add('none');e.popup.update();return}
+  if(p){ph.style.backgroundImage=`url("${p.src}")`;cr.innerHTML=`Photo: <a href="${p.page}" target="_blank" rel="noopener">Wikimedia Commons</a>`}else ph.classList.add('none');e.popup.update()})}
+const BEDI='<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18V7M3 14h18v4M21 14v-2a3 3 0 0 0-3-3h-7v5"/></svg>';
+STOPS.forEach(s=>{const cls=s.home?'home':(s.stay?'bed':(s.opt?'opt':''));
+  const icon=L.divIcon({className:'',html:`<div class="pin ${cls}">${s.home?'⌂':(s.stay?BEDI:s.day)}</div>`,iconSize:[28,28],iconAnchor:[14,14],popupAnchor:[0,-12]});
+  s.marker=L.marker(s.p,{icon,title:s.n,keyboard:true}).addTo(map).bindPopup(popHtml(s,`Day ${s.day} · ${s.t}${s.opt?' · optional':''}`),{maxWidth:260,minWidth:250,autoPanPaddingTopLeft:[10,140],autoPanPaddingBottomRight:[10,40]});
+  wirePhoto(s.marker,s);s.marker.on('click',()=>{if(cur!==s.day&&cur!==0)selectDay(s.day,false)})});
+EXTRAS.forEach(x=>{const icon=L.divIcon({className:'',html:'<div class="pin extra">+</div>',iconSize:[22,22],iconAnchor:[11,11],popupAnchor:[0,-10]});
+  x.marker=L.marker(x.p,{icon,title:x.n}).addTo(map).bindPopup(popHtml(x,'If you add days'),{maxWidth:260,minWidth:250,autoPanPaddingTopLeft:[10,140]});wirePhoto(x.marker,x)});
+
+
+const BED='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18V7M3 14h18v4M21 14v-2a3 3 0 0 0-3-3h-7v5"/><circle cx="7" cy="11" r="1.6"/></svg>';
+const inr=v=>'₹'+Math.round(v).toLocaleString('en-IN');
+let stayTier='cheap',people=14;try{const t=localStorage.getItem('krt-tier');if(t)stayTier=t;const p=+localStorage.getItem('krt-ppl');if(p>0)people=p}catch(e){}
+const roomsFor=()=>Math.ceil(people/2);
+const nightCost=o=>o.whole?o.rate:o.rate*roomsFor();
+STAYS.forEach(s=>s.opts.forEach(o=>{
+  o.marker=L.marker(o.p,{icon:L.divIcon({className:'',html:`<div class="pin bed ${o.tier==='value'?'alt':''}">${BED}</div>`,iconSize:[30,30],iconAnchor:[15,15],popupAnchor:[0,-12]}),title:o.n}).addTo(map)
+   .bindPopup(()=>`<div class="pop"><div class="body"><div class="d">${s.date} · ${s.place} · ${o.tier==='cheap'?'Cheapest':'Better rated'}</div><div class="n">${o.n}</div><div class="x">${o.fit}<br>${o.score}<br><b>${inr(nightCost(o))}</b> per night for ${people} · ${s.nights} night${s.nights>1?'s':''}</div><a href="${AG(o.url,s.ci,s.nights)}" target="_blank" rel="noopener">View on Agoda ↗</a><div class="cr">Location approximate</div></div></div>`,{maxWidth:260,minWidth:250,autoPanPaddingTopLeft:[10,140]})}));
+
+/* ---------- bottom sheet ---------- */
+const sheet=document.getElementById('sheet'),grab=document.getElementById('grab'),topEl=document.getElementById('top');
+const mobile=()=>innerWidth<900;
+let sheetState='peek';
+function heights(){const peek=topEl.offsetTop+topEl.offsetHeight+4;return{peek,half:Math.max(peek,Math.round(innerHeight*.55)),full:innerHeight-(72+(parseInt(getComputedStyle(root).paddingTop)||0))-20}}
+function setSheet(state,px){if(!mobile()){sheet.style.height='';root.style.setProperty('--sheetH','0px');return}
+  const h=heights();sheetState=state||sheetState;const v=px!=null?px:h[sheetState];sheet.style.height=v+'px';root.style.setProperty('--sheetH',v+'px')}
+let drag=null;
+grab.addEventListener('pointerdown',e=>{if(!mobile())return;drag={y:e.clientY,h:sheet.offsetHeight,moved:false};sheet.classList.add('dragging');grab.setPointerCapture(e.pointerId)});
+grab.addEventListener('pointermove',e=>{if(!drag)return;const dy=drag.y-e.clientY;if(Math.abs(dy)>4)drag.moved=true;const h=heights();setSheet(null,Math.min(h.full,Math.max(h.peek,drag.h+dy)))});
+grab.addEventListener('pointerup',e=>{if(!drag)return;sheet.classList.remove('dragging');const h=heights();
+  if(!drag.moved){setSheet(sheetState==='peek'?'half':sheetState==='half'?'full':'peek')}
+  else{const v=sheet.offsetHeight;const st=Object.entries(h).sort((a,b)=>Math.abs(a[1]-v)-Math.abs(b[1]-v))[0][0];setSheet(st)}drag=null});
+grab.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSheet(sheetState==='peek'?'half':sheetState==='half'?'full':'peek')}});
+addEventListener('resize',()=>setSheet());
+function fitPad(){return mobile()?{paddingTopLeft:[24,90],paddingBottomRight:[24,(parseInt(sheet.style.height)||220)+20]}:{paddingTopLeft:[440,40],paddingBottomRight:[40,40]}}
+
+/* ---------- plan panel ---------- */
+const daysEl=document.getElementById('days'),listEl=document.getElementById('list'),headEl=document.getElementById('dayHead'),scrollEl=document.getElementById('scroll');
+let cur=0,nextStop=null,liveKm=null;
+const mk=(txt,n)=>{const b=document.createElement('button');b.className='chip';b.textContent=txt;b.setAttribute('role','tab');b.onclick=()=>{selectDay(n);if(mobile()&&sheetState==='peek')setSheet('half')};daysEl.appendChild(b)};
+mk('Full loop',0);DAYS.forEach(d=>mk('Day '+d.n,d.n));
+document.querySelectorAll('.seg.plan button').forEach(b=>{b.classList.toggle('on',b.dataset.p===PLAN);b.setAttribute('role','radio');b.setAttribute('aria-checked',b.dataset.p===PLAN);
+  b.onclick=()=>{if(b.dataset.p===PLAN)return;try{localStorage.setItem('krt-plan',b.dataset.p);localStorage.setItem('krt-tier',b.dataset.p==='agoda'?'cheap':stayTier)}catch(e){}location.reload()}});
+if(PLAN==='agoda'){stayTier='cheap'}
+const stayChip=document.createElement('button');stayChip.className='chip stay';stayChip.textContent='Stays';stayChip.setAttribute('role','tab');stayChip.onclick=()=>{showStays();if(mobile()&&sheetState==='peek')setSheet('half')};daysEl.appendChild(stayChip);
+let startVal='';try{startVal=localStorage.getItem('krt-start')||''}catch(e){}
+function dateFor(n){if(!startVal)return'';const dt=new Date(startVal+'T00:00');dt.setDate(dt.getDate()+n-1);return dt.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'})}
+function flyToStop(s){map.flyTo(s.p,13,{duration:.8});if(mobile()&&sheetState==='full')setSheet('half');setTimeout(()=>s.marker.openPopup(),850)}
+function selectDay(n,fit=true){
+  cur=n;[...daysEl.children].forEach((b,i)=>{b.classList.toggle('active',i===n);b.setAttribute('aria-selected',i===n)});stayChip.classList.remove('active');
+  daysEl.children[n].scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'});
+  DAYS.forEach(d=>lines[d.n].setStyle({color:(n===0||d.n===n)?ROUTE_ON:ROUTE_OFF,weight:d.n===n?6:4}));if(n)lines[n].bringToFront();
+  if(fit)map.fitBounds(n?lines[n].getBounds():L.featureGroup(Object.values(lines)).getBounds(),fitPad());
+  scrollEl.scrollTop=0;
+  if(!n){
+    headEl.innerHTML=`<h2>${DAYS.length}-day loop from Acharlahalli</h2><div class="meta">≈ ${Math.round(TOTAL/10)*10} km · ${STOPS.filter(s=>!s.home).length} stops · tap any pin for photos</div>`;
+    listEl.innerHTML=DAYS.map(x=>`<div class="stop" data-day="${x.n}" tabindex="0"><div class="t">Day ${x.n}${dateFor(x.n)?'<br>'+dateFor(x.n):''}</div><div><div class="nm">${x.title}</div><div class="note">${x.km} · ${x.stops.filter(s=>!s.home).length} stops</div></div></div>`).join('')
+      +`<div class="sec">More of Kerala, if you add days</div>`
+      +EXTRAS.map((x,i)=>`<div class="stop" data-x="${i}" tabindex="0"><div class="t" style="color:var(--extra)">+ extra</div><div><div class="nm">${x.n}</div><div class="note">${x.x}</div></div></div>`).join('')
+      +`<div class="tip"><b>Before you go:</b> Bandipur is closed to traffic 9 PM–6 AM. Do the Thamarassery ghat before 8 AM. Edakkal Caves close on Mondays. Cross Chinnar in daylight. Check the Tempo Traveller has an All India Tourist Permit or a Kerala permit.</div>`;
+    listEl.querySelectorAll('[data-day]').forEach(e=>e.onclick=()=>selectDay(+e.dataset.day));
+    listEl.querySelectorAll('[data-x]').forEach(e=>e.onclick=()=>flyToStop(EXTRAS[+e.dataset.x]));return}
+  const d=DAYS[n-1],wd=dateFor(n);
+  headEl.innerHTML=`<h2>Day ${n} · ${d.title}</h2><div class="meta">${wd?wd+' · ':''}${d.km}</div><a class="btn" href="${gmNav(d)}" target="_blank" rel="noopener">Navigate in Google Maps ↗</a>`;
+  const mon=n===1&&wd.startsWith('Mon')?'<div class="tip">Day 1 is a Monday, so Edakkal Caves are closed. Do Banasura Sagar Dam instead, or start a day later.</div>':'';
+  listEl.innerHTML=mon+d.stops.map((s,i)=>`<div class="stop ${nextStop===s?'next':''} ${(liveKm!=null&&s.km<liveKm-1&&nextStop!==s&&!s.opt)?'done':''}" data-i="${i}" tabindex="0"><div class="t">${s.t}</div><div><div class="nm">${s.n}${s.opt?'<span class="tag">optional</span>':''}</div><div class="note">${s.x}</div></div></div>`).join('');
+  listEl.querySelectorAll('.stop').forEach(e=>{const s=d.stops[+e.dataset.i];e.onclick=()=>flyToStop(s);e.onkeydown=k=>{if(k.key==='Enter')flyToStop(s)}});
+  d.stops.forEach(preload);
+}
+
+
+function showStays(fit=true){
+  cur=-1;[...daysEl.children].forEach(b=>{b.classList.remove('active');b.setAttribute('aria-selected',false)});stayChip.classList.add('active');stayChip.setAttribute('aria-selected',true);
+  stayChip.scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'});
+  DAYS.forEach(d=>lines[d.n].setStyle({color:ROUTE_OFF,weight:4}));
+  if(fit)map.fitBounds(L.latLngBounds(STAYS.flatMap(s=>s.opts.map(o=>o.p))),fitPad());
+  scrollEl.scrollTop=0;
+  const pick=s=>s.opts.find(o=>o.tier===stayTier);
+  const total=STAYS.reduce((a,s)=>a+nightCost(pick(s))*s.nights,0),nights=STAYS.reduce((a,s)=>a+s.nights,0);
+  headEl.innerHTML=`<h2>Where to stay · ${nights} nights</h2><div class="meta">Lowest Agoda prices for Dec 25–29 that fit your group, checked 26 Oct. Before taxes and fees.</div>
+   <div class="seg" role="radiogroup" aria-label="Stay plan" style="margin-top:6px"><button data-t="cheap" class="${stayTier==='cheap'?'on':''}">Cheapest</button><button data-t="value" class="${stayTier==='value'?'on':''}">Better rated</button></div>
+   <div class="sum" style="margin-top:6px"><div class="box"><div class="k">Group total</div><div class="v">${inr(total)}</div></div><div class="box"><div class="k">Per person</div><div class="v">${inr(total/people)}</div></div></div>
+   <label class="ppl" for="ppl">People <input id="ppl" type="number" min="1" max="40" step="1" value="${people}"> · ${roomsFor()} rooms where it's a hotel</label>`;
+  headEl.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{stayTier=b.dataset.t;try{localStorage.setItem('krt-tier',stayTier)}catch(e){}paintStayPins();showStays(false)});
+  const pp=document.getElementById('ppl');pp.onchange=()=>{const v=Math.round(+pp.value);if(v>0&&v<=40){people=v;try{localStorage.setItem('krt-ppl',people)}catch(e){}showStays(false)}else pp.value=people};
+  listEl.innerHTML=STAYS.map((s,si)=>`<div class="night"><h3>${s.place}<span>${s.date} · ${s.nights} night${s.nights>1?'s':''} · after Day ${s.day}</span></h3>`+
+    s.opts.map((o,oi)=>`<div class="scard ${o.tier===stayTier?'pick':''}"><span class="badge ${o.tier==='cheap'?'c':''}">${o.tier==='cheap'?'Cheapest that fits':'Better rated'}</span>
+      <div class="top"><div class="nm">${o.n}</div><div class="pr">${inr(nightCost(o)*s.nights)}</div></div>
+      <div class="sm">${o.area}</div><div class="sm">${o.fit} · ${o.score}</div>
+      <div class="sm">${o.whole?inr(o.rate)+' per night for the whole place':inr(o.rate)+' per room × '+roomsFor()+' rooms'}${s.nights>1?' × '+s.nights+' nights':''}</div>
+      <div class="acts"><a href="${AG(o.url,s.ci,s.nights)}" target="_blank" rel="noopener">View on Agoda ↗</a><button data-s="${si}" data-o="${oi}">Show on map</button></div></div>`).join('')+`</div>`).join('')
+   +`<div class="tip"><b>Book soon:</b> Christmas week is peak season. Agoda showed most places as nearly full, with several listings down to their last room or two. Prices exclude GST and fees, and can change. Whole houses with fewer beds than people usually allow extra mattresses; confirm with the host. Pin locations are approximate.</div>`;
+  listEl.querySelectorAll('.acts button').forEach(b=>b.onclick=()=>{const o=STAYS[+b.dataset.s].opts[+b.dataset.o];map.flyTo(o.p,13,{duration:.8});if(mobile()&&sheetState==='full')setSheet('half');setTimeout(()=>o.marker.openPopup(),850)});
+}
+function paintStayPins(){STAYS.forEach(s=>s.opts.forEach(o=>{const el=o.marker.getElement()?.firstChild;if(el)el.classList.toggle('alt',o.tier!==stayTier)}))}
+
+/* ---------- photo overlay (pausable) ---------- */
+const ph=document.getElementById('photo'),phImg=document.getElementById('phImg'),phBar=document.getElementById('phBar');
+let phTimer=null,phDone=null,phLeft=0,phStarted=0,phStop=null;
+function phRun(ms){phLeft=ms;phStarted=Date.now();clearTimeout(phTimer);phTimer=setTimeout(finishPhoto,ms);phBar.style.animationPlayState='running'}
+async function showPhoto(s,done){
+  phDone=done;phStop=s;phImg.style.backgroundImage='';phImg.classList.add('loading');
+  document.getElementById('phDay').textContent=`Day ${s.day} · ${s.t}${s.opt?' · optional detour':''}`;
+  document.getElementById('phName').textContent=s.n;document.getElementById('phNote').textContent=s.x;document.getElementById('phCredit').textContent='';
+  phBar.classList.remove('run');void phBar.offsetWidth;ph.classList.add('show');
+  const p=await Promise.race([photoFor(s),new Promise(r=>setTimeout(()=>r(null),2500))]);
+  if(phDone!==done)return;
+  phImg.classList.remove('loading');
+  if(p){phImg.style.backgroundImage=`url("${p.src}")`;document.getElementById('phCredit').textContent='Photo: Wikimedia Commons'}
+  const ms=5000;
+  phBar.style.animationDuration=ms+'ms';phBar.classList.add('run');
+  if(demoState==='paused'){phLeft=ms;phStarted=0;phBar.style.animationPlayState='paused';return}
+  phRun(ms)}
+function pausePhoto(){if(!phDone)return;clearTimeout(phTimer);if(phStarted)phLeft=Math.max(300,phLeft-(Date.now()-phStarted));phStarted=0;phBar.style.animationPlayState='paused'}
+function resumePhoto(){if(!phDone)return;if(phLeft)phRun(phLeft)}
+function finishPhoto(){clearTimeout(phTimer);ph.classList.remove('show');phBar.classList.remove('run');phStarted=0;const d=phDone;phDone=null;d&&d()}
+function cancelPhoto(){clearTimeout(phTimer);phDone=null;phStarted=0;ph.classList.remove('show')}
+document.getElementById('phSkip').onclick=()=>{if(demoState==='paused')setDemo('running');finishPhoto()};
+
+/* ---------- live GPS + demo ---------- */
+let watchId=null,meMarker=null,accCircle=null,follow=true;
+const st=document.getElementById('gpsStatus'),gpsBtn=document.getElementById('gpsBtn'),folBtn=document.getElementById('followBtn'),demoBtn=document.getElementById('demoBtn');
+const VAN='<svg viewBox="0 0 24 24" fill="#fff"><path d="M3 7h11l4 4h3v5h-2a2 2 0 0 1-4 0H9a2 2 0 0 1-4 0H3z"/></svg>';
+folBtn.onclick=()=>{follow=!follow;folBtn.setAttribute('aria-checked',follow)};
+const setLabel=(b,t)=>b.querySelector('span').textContent=t;
+const PLAY='<path d="M7 5v14l12-7z"/>',SQ='<rect x="6" y="6" width="12" height="12" rx="2"/>';
+function fmtKm(k){return k<1?Math.round(k*1000)+' m':(k<10?k.toFixed(1):Math.round(k))+' km'}
+function clearMe(){if(meMarker){map.removeLayer(meMarker);map.removeLayer(accCircle);meMarker=null}}
+function update(pt,acc,isDemo,zoom){
+  if(!meMarker){meMarker=L.marker(pt,{icon:L.divIcon({className:'',html:isDemo?`<div class="van">${VAN}</div>`:'<div class="me"></div>',iconSize:[30,30],iconAnchor:[15,15]}),zIndexOffset:1000,interactive:false}).addTo(map);
+    accCircle=L.circle(pt,{radius:acc||0,color:getComputedStyle(root).getPropertyValue('--gps'),weight:1,fillOpacity:.1,interactive:false}).addTo(map)}
+  meMarker.setLatLng(pt);accCircle.setLatLng(pt).setRadius(acc||0);
+  const s=snap(pt);liveKm=s.km;
+  document.getElementById('prog').textContent=`${fmtKm(s.km)} · ${Math.round(s.km/TOTAL*100)}%`;
+  const prev=nextStop;nextStop=STOPS.find(x=>!x.opt&&x.km>s.km+0.3)||null;
+  document.getElementById('nextCard').classList.add('show');
+  const nm=document.getElementById('nextName'),mt=document.getElementById('nextMeta'),dy=document.getElementById('nextDay');
+  if(s.off>15){nm.textContent='Off the planned route';mt.textContent=`${fmtKm(s.off)} from the plan · nearest point is Day ${s.day}`;dy.textContent='!'}
+  else if(nextStop){const left=nextStop.km-s.km,eta=left/45;nm.textContent=nextStop.n;dy.textContent='D'+nextStop.day;
+    mt.textContent=`${fmtKm(left)} · ~${eta<1?Math.round(eta*60)+' min':eta.toFixed(1)+' hrs'} · planned ${nextStop.t}`}
+  else{nm.textContent='Trip complete';mt.textContent='Welcome home.';dy.textContent='⌂'}
+  STOPS.forEach(x=>{const el=x.marker.getElement()?.firstChild;if(el)el.classList.toggle('nextpin',x===nextStop)});
+  if(cur===-1){}else if(s.day!==cur&&s.off<=15)selectDay(s.day,false);else if(prev!==nextStop)selectDay(cur,false);
+  if(mobile()&&sheetState==='peek')setSheet('peek');
+  if(follow)map.setView(pt,zoom||Math.max(map.getZoom(),12),{animate:!isDemo});
+  if(!isDemo&&prev&&prev!==nextStop&&navigator.vibrate)try{navigator.vibrate(200)}catch(e){}
+}
+gpsBtn.onclick=()=>{
+  if(demoState==='running')pauseDemo();if(demoState!=='idle'){cancelPhoto();clearMe()}
+  if(watchId!=null){navigator.geolocation.clearWatch(watchId);watchId=null;setLabel(gpsBtn,'Live GPS');gpsBtn.classList.add('primary');st.textContent='GPS stopped.';return}
+  if(!('geolocation' in navigator)){st.textContent='No GPS access here. Open this file in Chrome or Safari on your phone.';return}
+  clearMe();st.textContent='Asking for location…';
+  watchId=navigator.geolocation.watchPosition(
+    p=>{st.textContent=`Live · ±${Math.round(p.coords.accuracy)} m · ${new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`;update([p.coords.latitude,p.coords.longitude],p.coords.accuracy,false)},
+    e=>{st.textContent=e.code===1?'Location blocked. Allow location for this page in browser settings.':'Waiting for a GPS fix. Keep the screen on, open sky helps.'},
+    {enableHighAccuracy:true,maximumAge:5000,timeout:20000});
+  setLabel(gpsBtn,'Stop GPS');
+};
+/* demo: van drives the plan and stops 5 s at every place with a photo.
+   One button plays / pauses / resumes; a restart button appears once the demo has started. */
+let demoState='idle',demoK=0,demoIdx=0,demoT=null;
+const DEMO_STOPS=STOPS.filter(s=>!s.home&&!s.stay);
+const restartBtn=document.getElementById('restartBtn'),gpsRow=document.querySelector('.gpsrow');
+const PAUSE='<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>';
+function routePoint(k){let i=ROUTE.findIndex(r=>r.km>=k);if(i<=0)return ROUTE[Math.max(i,0)].p;const a=ROUTE[i-1],b=ROUTE[i],t=(k-a.km)/((b.km-a.km)||1);return[a.p[0]+(b.p[0]-a.p[0])*t,a.p[1]+(b.p[1]-a.p[1])*t]}
+function saveDemo(){try{if(demoState==='idle')localStorage.removeItem('krt-demo-'+PLAN);else localStorage.setItem('krt-demo-'+PLAN,JSON.stringify({k:demoK,i:demoIdx}))}catch(e){}}
+function setDemo(state){
+  demoState=state;const svg=demoBtn.querySelector('svg');
+  if(state==='running'){setLabel(demoBtn,'Pause');svg.innerHTML=PAUSE;demoBtn.classList.add('on')}
+  else if(state==='paused'){setLabel(demoBtn,'Resume');svg.innerHTML=PLAY;demoBtn.classList.add('on')}
+  else{setLabel(demoBtn,'Demo');svg.innerHTML=PLAY;demoBtn.classList.remove('on')}
+  const showR=state!=='idle'||demoK>0;restartBtn.hidden=!showR;gpsRow.classList.toggle('has-restart',showR);
+  if(mobile()&&sheetState==='peek')setSheet('peek')}
+function demoTick(){
+  if(demoState!=='running')return;const step=TOTAL/900,target=demoK+step,ds=DEMO_STOPS[demoIdx];
+  if(ds&&ds.km<=target){demoK=ds.km;demoIdx++;update(routePoint(demoK),0,true,10);saveDemo();
+    if(DEMO_STOPS[demoIdx])preload(DEMO_STOPS[demoIdx]);
+    map.flyTo(ds.p,12,{duration:.9});st.textContent=`Demo · stopped at ${ds.n} (${demoIdx}/${DEMO_STOPS.length})`;
+    showPhoto(ds,()=>{if(demoState==='idle')return;st.textContent='Demo · driving…';map.setView(routePoint(demoK),10);if(demoState==='running')demoT=setTimeout(demoTick,250)});return}
+  demoK=target;if(demoK>=TOTAL){update(HOME,0,true,10);demoK=0;demoIdx=0;setDemo('idle');saveDemo();st.textContent='Demo finished. You made it home. Tap Demo to watch again.';return}
+  update(routePoint(demoK),0,true,10);demoT=setTimeout(demoTick,45)}
+function startDemo(fromK,fromIdx){
+  if(watchId!=null){navigator.geolocation.clearWatch(watchId);watchId=null;setLabel(gpsBtn,'Live GPS')}
+  clearTimeout(demoT);cancelPhoto();clearMe();demoK=fromK;demoIdx=fromIdx;
+  setDemo('running');st.textContent=fromK>0?'Demo · continuing from where you paused…':'Demo · driving…';
+  if(mobile())setSheet('peek');preload(DEMO_STOPS[demoIdx]||DEMO_STOPS[0]);map.setView(routePoint(demoK),10);demoTick()}
+function pauseDemo(){clearTimeout(demoT);pausePhoto();setDemo('paused');saveDemo();st.textContent=`Demo paused at ${Math.round(demoK)} km. Resume or restart.`}
+function resumeDemo(){setDemo('running');st.textContent='Demo · driving…';if(phDone)resumePhoto();else demoTick()}
+function stopDemo(){clearTimeout(demoT);cancelPhoto();setDemo('paused');saveDemo();clearMe()}
+demoBtn.onclick=()=>{
+  if(demoState==='running')return pauseDemo();
+  if(demoState==='paused'){if(!meMarker){startDemo(demoK,demoIdx)}else resumeDemo();return}
+  startDemo(demoK,demoIdx)};
+restartBtn.onclick=()=>{try{localStorage.removeItem('krt-demo-'+PLAN)}catch(e){}startDemo(0,0)};
+try{const sv=JSON.parse(localStorage.getItem('krt-demo-'+PLAN)||'null');if(sv&&sv.k>0&&sv.k<TOTAL){demoK=sv.k;demoIdx=sv.i;demoState='paused';setDemo('paused');st.textContent=`Demo paused at ${Math.round(demoK)} km last time. Tap Resume to continue.`}}catch(e){}
+
+
+/* ---------- hamburger menu ---------- */
+const menu=document.getElementById('menu'),menuBtn=document.getElementById('menuBtn'),scrim=document.getElementById('scrim');
+function setMenu(open){menu.hidden=!open;scrim.hidden=!open;menuBtn.setAttribute('aria-expanded',open);menuBtn.setAttribute('aria-label',open?'Close menu':'Open menu')}
+menuBtn.onclick=()=>setMenu(menu.hidden);scrim.onclick=()=>setMenu(false);
+addEventListener('keydown',e=>{if(e.key==='Escape'&&!menu.hidden){setMenu(false);menuBtn.focus()}});
+const dateIn=document.getElementById('startDate');dateIn.value=startVal;
+dateIn.onchange=()=>{startVal=dateIn.value;try{localStorage.setItem('krt-start',startVal)}catch(_){}if(cur===-1)showStays(false);else selectDay(cur,false)};
+document.getElementById('stayMenu').onclick=()=>{setMenu(false);showStays();if(mobile())setSheet('half')};
+document.getElementById('restartMenu').onclick=()=>{setMenu(false);restartBtn.onclick()};
+
+if(PLAN==='agoda')document.getElementById('sub').textContent='Agoda stays: Kalpetta · Fort Kochi · Adimali ×2';
+selectDay(0);paintStayPins();setSheet('peek');
+setTimeout(()=>setSheet('peek'),400); // after fonts settle
+</script>
+</body>
+</html>
